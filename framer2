@@ -1,0 +1,116 @@
+#!/usr/bin/perl
+
+use strict;
+use WWVB;
+use vars qw(%args);
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+my $blocks = $args{SAMPLES_PER_SECOND};
+my(%this_run,@block_score,@blocks,$last,$count);
+my $s = 0;
+while(my $f = <>) {
+  chomp($f);
+  push(@blocks,$f);
+  # TODO: consider % of time silent instead of run of silence
+  if($f =~ /^l/) { # found a low, start/continue the run
+    if(not defined($last)) {
+      $last = $blocks;
+    }
+    $count++;
+  } elsif(defined($last)) {
+    $this_run{$last} = $count;
+    $count = 0;
+    $last = undef;
+  }
+  $blocks--;
+  if($blocks == 0) { # TODO problem: silence spanning multiple local seconds
+    if($last) {
+      $this_run{$last} = $count;
+    }
+    foreach my $blockid (keys %this_run) {
+      if($this_run{$blockid} > 17) { # 170ms
+        for(my $i = $blockid; $i > $blockid-$this_run{$blockid}; $i--) {
+          $block_score[$i]++;
+        }
+      }
+    }
+    %this_run = ();
+    $count = 0;
+    $blocks = $args{SAMPLES_PER_SECOND};
+    $s++;
+    if($s >= $args{STARTUP_DELAY}) {
+      last;
+    }
+  }
+}
+
+my($start,$count);
+for(my $i = @block_score; $i >= 0; $i--) {
+  if($block_score[$i] > $args{STARTUP_DELAY}/2) {
+    if(not defined($start)) {
+      $start = $i;
+    }
+    $count++;
+    if($count >= 18) { # 180ms
+      last;
+    }
+  } else {
+    $count = 0;
+    $start = undef;
+  }
+}
+#print STDERR "start = $start, count = $count\n";
+
+if(not defined($start)) {
+  die("$0 error: no start point found");
+}
+
+my $blockid = 0;
+my($last_wrong,$first_wrong,$count);
+for(my $i = 0; $i < @blocks; $i++) {
+  if($i < $args{SAMPLES_PER_SECOND}-$start) { # skip the partial second
+    next;
+  }
+  if($blockid == 0 and $blocks[$i] =~ /^H/) {
+    $first_wrong++;
+  } elsif($blockid == $args{SAMPLES_PER_SECOND}-1 and $blocks[$i] =~ /^l/) {
+    $last_wrong++;
+  }
+  print $blocks[$i];
+  $blockid++;
+  if($blockid == $args{SAMPLES_PER_SECOND}) {
+    print "\n";
+    $blockid = 0;
+    $count++;
+  }
+}
+
+while(my $f = <>) {
+  chomp($f);
+  if($blockid == 0 and $f =~ /^H/) { # first sample shouldn't be high
+    $first_wrong++;
+  } elsif($blockid == $args{SAMPLES_PER_SECOND}-1 and $f =~ /^l/) { # last sample shouldn't be low
+    $last_wrong++;
+  }
+  if($blockid >= 0) { # only print if we aren't skipping one
+    print $f;
+  }
+  $blockid++;
+  if($blockid == $args{SAMPLES_PER_SECOND}) {
+    print "\n";
+    $blockid = 0;
+    $count++;
+    if($count == 30) {
+      if($first_wrong > 25) {
+        print STDERR "framer: slip -1\n";
+        $blockid = -1;
+      } elsif($last_wrong > 25) {
+        print STDERR "framer: slip +1\n";
+        $blockid = 1;
+      }
+      $first_wrong = $last_wrong = $count = 0;
+    }
+  }
+}

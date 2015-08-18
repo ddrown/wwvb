@@ -1,0 +1,17 @@
+#!/usr/bin/perl
+
+use strict;
+
+my($i) = 0;
+while(<>) {
+  chomp($_);
+  open(AM,">.am.$i");
+  my(@am) = split(/[lH]/,$_);
+  foreach my $mag (@am) {
+    if(length($mag)) {
+      print AM $mag,"\n";
+    }
+  }
+  close(AM);
+  $i++;
+}

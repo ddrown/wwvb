@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+
+use strict;
+use Math::FFT;
+use WWVB;
+use vars qw(%args);
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+sub hz {
+  my($sps,$bins,$bin) = @_;
+
+  my($sign) = 1;
+  if($bin % 2) {
+    $sign = -1;
+  }
+  if($bin == 1) { # bin 1 is R[n/2] since I[n/2] and I[0] aren't used 
+    $sign = 1;
+    $bin = $bins/2;
+  } else {
+    $bin = int($bin/2);
+  }
+
+  return $sps/$bins*$bin*$sign;
+}
+
+my(@points);
+my($next) = 256;
+while(<>) {
+  chomp($_);
+  push(@points,$_);
+  if(@points == $next) {
+    my $fft = new Math::FFT(\@points);
+    my $coeff = $fft->rdft();
+    my $len = @$coeff;
+    my(@sorted) = sort {abs($coeff->[$b]) <=> abs($coeff->[$a])} (0..$len-1);
+    print "\nN=$next L=$len HZbin=".($args{SAMPLES_PER_SECOND}/$next)."\n";
+    for(my $i = 0; $i < 10; $i++) {
+      print hz($args{SAMPLES_PER_SECOND},$next,$sorted[$i]),"HZ=",$coeff->[$sorted[$i]],"\n";
+    }
+    $next *= 2;
+  }
+}

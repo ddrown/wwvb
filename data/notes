@@ -1,0 +1,16 @@
+-from recordings/SDRSharp_20150803_035624Z_59kHz_AF.wav
+pm.data.2 - 599.661 - should be within 0.001 Hz (0.016ppb)
+pm.data.3 - 599.660
+pm.data.4 - 599.662
+pm.data.5 - 605
+pm.data.6 - 595
+pm.data.7 - costas loop with 600
+pm.data.8 - costas loop with 605
+pm.data.9 - costas loop with 595
+pm.data.10 - costas loop with 595 + 62.8m bw
+
+-from recordings/ant.wide.5min.15.625.kHz.44.1k.24b.wav
+pm.data-2.1 - 15624.54 filter set to (2Hz,0.5Hz)
+pm.data-2.2 - 15624.54 filter set to (1Hz,0.5Hz)
+pm.data-2.3 - 15624.54 filter set to (0.5Hz,0.25Hz)
+pm.data-2.4 - 15624.54 filter set to (0.5,0.25) + costas loop (31.4m)

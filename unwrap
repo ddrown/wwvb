@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+
+use strict;
+$| = 1;
+
+my($offset,$last_raw) = (0,0);
+
+while(<>) {
+  chomp($_);
+  my $raw = $_;
+  if($raw < -100 and $last_raw > 100) {
+#    print "R: $raw L: $last_raw +360\n";
+    $offset += 360;
+  } elsif($raw > 100 and $last_raw < -100) {
+#    print "R: $raw L: $last_raw -360\n";
+    $offset -= 360;
+  }
+  $last_raw = $raw;
+  print(($raw + $offset)," $raw $offset\n");
+}

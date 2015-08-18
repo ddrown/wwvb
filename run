@@ -1,0 +1,3 @@
+#!/bin/sh
+
+./accept | ./am-detect | ./framer2 | ./ampm

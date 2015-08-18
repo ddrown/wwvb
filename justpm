@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+
+use strict;
+use Math::Trig ':pi';
+use WWVB;
+use vars qw(%args);
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+sub direction {
+  my($arg) = @_;
+
+  my $direction = int($arg/45);
+  if($direction >= 4 or $direction <= -4) {
+    print "v"; # S
+  } elsif($direction == -3) {
+    print ","; # SW
+  } elsif($direction == -2) {
+    print "<"; # W
+  } elsif($direction == -1) {
+    print "`"; # NW
+  } elsif($direction == 0) {
+    print "^"; # N
+  } elsif($direction == 1) {
+    print "/"; # NE
+  } elsif($direction == 2) {
+    print ">"; # E
+  } elsif($direction == 3) {
+    print "\\"; # SE
+  } else {
+    print "?"; # wut
+  }
+}
+
+while(my $line = <>) {
+  chomp($line);
+  while($line =~ s/^([lH])([-0-9]+)//) {
+    my($am,$pm) = ($1,$2);
+    if($am eq "H") {
+      print "\e[7m";
+    }
+    direction($pm);
+    if($am eq "H") {
+      print "\e[0m";
+    }
+  }
+  print "\n";
+}

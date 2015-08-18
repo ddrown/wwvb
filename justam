@@ -1,0 +1,18 @@
+#!/usr/bin/perl
+
+use strict;
+use WWVB;
+use vars qw(%args);
+
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+while(my $f = <>) {
+  chomp($f);
+  my($am) = $f;
+  $am =~ s/[-0-9]*//g; # remove phase data
+  $am =~ s/l/_/g;
+  $am =~ s/H/#/g;
+  print "$am\n";
+}

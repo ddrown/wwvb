@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+use strict;
+use WWVB;
+use Statistics::LineFit;
+use vars qw(%args);
+
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+sub linear_fit {
+  my($pm) = @_;
+
+  my(@pm_nowrap) = ($pm->[0]);
+ 
+  # TODO: this doesn't work
+  for(my $i = 1; $i < @$pm; $i++) {
+    if($pm->[$i-1] > 90 and $pm->[$i] < -90) {
+      push(@pm_nowrap, $pm->[$i]+180);
+    } elsif($pm->[$i-1] < -90 and $pm->[$i] > 90) {
+      push(@pm_nowrap, $pm->[$i]-180);
+    } else {
+      push(@pm_nowrap, $pm->[$i]);
+    }
+  }
+
+  my(@counts) = (0..$#pm_nowrap);
+  my $linefit = Statistics::LineFit->new();
+  $linefit->setData(\@counts, \@pm_nowrap);
+  my($intercept, $slope) = $linefit->coefficients();
+  print "-1,linefit,$intercept,$slope,",$linefit->rSquared,"\n";
+}
+
+sub detect_type_pm {
+  my($pm) = @_;
+
+  foreach my $value (@$pm) {
+    print $value,"\n";
+  }
+  # skip the first 200ms, assuming framing is correct
+  my(@pm) = splice(@$pm, int($args{SAMPLES_PER_SECOND}*0.200));
+  if(not @pm) {
+    return; # not enough data this run
+  }
+
+  linear_fit(\@pm);
+}
+
+while(my $f = <>) {
+  chomp($f);
+  my(@pm) = split(/[lH]/,$f);
+  detect_type_pm(\@pm);
+}

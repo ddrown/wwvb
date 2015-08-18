@@ -1,0 +1,252 @@
+#!/usr/bin/perl
+
+use strict;
+use WWVB;
+use Statistics::LineFit;
+use vars qw(%args);
+
+$| = 1;
+
+%args = WWVB::args(\@ARGV);
+
+sub am_run {
+  my($time,$power) = @_;
+
+  return $power x int($args{SAMPLES_PER_SECOND} * $time);
+}
+
+my(%types) = (
+ "E" => am_run(1,"1"),
+ "e" => am_run(1,"0"),
+ "M" => am_run(0.8,"0") . am_run(0.2,"1"),
+ "1" => am_run(0.5,"0") . am_run(0.5,"1"),
+ "0" => am_run(0.2,"0") . am_run(0.8,"1")
+);
+
+sub detect_type_am {
+  my($am) = @_;
+
+  my(%scores);
+  foreach my $type (keys %types) {
+    for(my $i = 0; $i < length($types{$type}); $i++) {
+      if(substr($am,$i,1) eq substr($types{$type},$i,1)) {
+        $scores{$type}++;
+      }
+    }
+  }
+  my(@score_list) = sort { $scores{$b} <=> $scores{$a} } keys %scores;
+  # TODO: use scores to estimate noise and/or framing slips?
+
+  return($score_list[0],$scores{$score_list[0]});
+}
+
+sub bcd {
+  my($bits) = @_;
+  my(@values) = qw(1 2 4 8 10 20 40 80 100 200);
+  my($value) = 0;
+  my(@bits) = split(//,$bits);
+  for(my $i = 0; $i < @bits; $i++) {
+    if($value > $values[$i]) {
+      print STDERR "invalid BCD: $bits\n";
+      return undef;
+    }
+    $value += ($bits[$i] eq "0") ? 0 : $values[$i];
+  }
+  return $value;
+}
+
+sub leap {
+  my($leap) = @_;
+  my(@leaps) = split(//,$leap);
+  my(@messages);
+  if($leaps[0] ne "0") {
+    push(@messages, "leap second at end of month");
+  }
+  if($leaps[1] ne "0") {
+    push(@messages, "leap year");
+  }
+  return join(" ",@messages);
+}
+
+sub dst { # note: bits come in backwards
+  my($dst) = @_;
+  if($dst eq "10") {
+    return "DST ends today";
+  } elsif($dst eq "11") {
+    return "DST in effect";
+  } elsif($dst eq "01") {
+    return "DST begins today";
+  } elsif($dst eq "00") {
+    return "DST not in effect";
+  }
+}
+
+sub print_data {
+  my($data) = @_;
+  my $str = "DUT:";
+  if($data->{dut_s} eq "101") {
+    $str .= "+";
+  } elsif($data->{dut_s} eq "010") {
+    $str .= "-";
+  } else {
+    $str .= "?";
+  }
+  $str .= bcd($data->{dut});
+  $str .= " T:".bcd($data->{hour}).":".bcd($data->{minute}).":59";
+  $str .= " D:".bcd($data->{day})." Y:".bcd($data->{year});
+  $str .= " L:".leap($data->{leap});
+  $str .= " DST:".dst($data->{dst});
+  $str .= " E:".$data->{errors}."\n";
+  print $str;
+}
+
+sub partial_data {
+  my($data) = @_;
+  print "partial\n";
+  foreach my $key (keys %$data) {
+    $data->{$key} =~ s/M/1/g; # assume all M's are 1's for data fields
+  }
+  print_data($data);
+}
+
+sub full_data {
+  my($data) = @_;
+  print "full\n";
+  foreach my $key (keys %$data) {
+    $data->{$key} =~ s/M/1/g; # assume all M's are 1's for data fields
+  }
+  print_data($data);
+}
+
+my(@times) = qw(
+ M m m m 0 m m m m M 
+ 0 0 h h 0 h h h h M 
+ 0 0 d d 0 d d d d M 
+ d d d d 0 0 u u u M
+ U U U U 0 y y y y M 
+ y y y y 0 L L D D M);
+
+# assumption: @t ends at :59
+sub decode_time {
+  my(@t) = @_;
+  my $second = 59;
+  my(%data);
+  for(my $i = $#t; $i >= 0; $i--) {
+    if($times[$second] eq "0" or $times[$second] eq "M") {
+      if($t[$i] ne $times[$second]) {
+        $data{errors}++;
+      }
+    } elsif($times[$second] eq "m") {
+      $data{minute} .= $t[$i];
+    } elsif($times[$second] eq "h") {
+      $data{hour} .= $t[$i];
+    } elsif($times[$second] eq "d") {
+      $data{day} .= $t[$i];
+    } elsif($times[$second] eq "u") {
+      $data{dut_s} .= $t[$i];
+    } elsif($times[$second] eq "U") {
+      $data{dut} .= $t[$i];
+    } elsif($times[$second] eq "y") {
+      $data{year} .= $t[$i];
+    } elsif($times[$second] eq "L") {
+      $data{leap} .= $t[$i];
+    } elsif($times[$second] eq "D") {
+      $data{dst} .= $t[$i];
+    } else {
+      die("unknown state for $second: $times[$second]");
+    }
+    $second--;
+    if($second < 0) {
+      full_data(\%data);
+      %data = ();
+      $second = 59;
+    }
+  }
+  if(%data) {
+    partial_data(\%data);
+  }
+}
+
+sub linear_fit {
+  my($pm) = @_;
+
+  my(@pm_nowrap) = ($pm->[0]);
+  
+  for(my $i = 1; $i < @$pm; $i++) {
+    if($pm->[$i-1] > 90 and $pm->[$i] < -90) {
+      push(@pm_nowrap, $pm->[$i]+180);
+    } elsif($pm->[$i-1] < -90 and $pm->[$i] > 90) {
+      push(@pm_nowrap, $pm->[$i]-180);
+    } else {
+      push(@pm_nowrap, $pm->[$i]);
+    }
+  }
+
+  my(@counts) = (0..$#pm_nowrap);
+  my $linefit = Statistics::LineFit->new();
+  $linefit->setData(\@counts, \@pm_nowrap);
+  my($intercept, $slope) = $linefit->coefficients();
+  print "y = $intercept + $slope * x (chi=".$linefit->rSquared.")\n";
+}
+
+my($last_angle,$last_value) = (0,0);
+sub detect_type_pm {
+  my($am,$pm) = @_;
+
+  # skip the first 200ms, assuming framing is correct
+  my(@pm) = splice(@$pm, int($args{SAMPLES_PER_SECOND}*0.200));
+  if(not @pm) {
+    return; # not enough data this run
+  }
+  my($min,$sum,$max);
+  for(my $i = 0; $i < @pm; $i++) {
+    $sum += $pm[$i];
+    if(not defined($min) or $min > $pm[$i]) {
+      $min = $pm[$i];
+    }
+    if(not defined($max) or $max < $pm[$i]) {
+      $max = $pm[$i];
+    }
+  }
+
+  my $avg = ($sum/scalar(@pm));
+  my($diff) = $last_angle-$avg;
+  if($diff > 180) {
+    $diff = 360 - $diff;
+  } elsif($diff < -180) {
+    $diff = 360 + $diff;
+  }
+  if(abs($diff) > 90) {
+    $last_value = ($last_value == 0) ? 1 : 0;
+  }
+  print "pm: $last_value ";
+  $last_angle = $avg;
+
+  linear_fit(\@pm);
+}
+
+my($s) = 0;
+my(@am_types);
+while(my $f = <>) {
+  chomp($f);
+  my($am) = $f;
+  $am =~ s/[-0-9]*//g; # remove phase data
+  $am =~ s/l/0/g;
+  $am =~ s/H/1/g;
+  my($type,$score) = detect_type_am($am);
+  if($type eq "M") {
+    printf("%d: marker (%d%%)\n",$s,$score/$args{SAMPLES_PER_SECOND}*100);
+    if($am_types[-1] eq "M") {
+      print "$s: top of minute detected\n";
+      decode_time(@am_types);
+      @am_types = ();
+    }
+  } elsif($type =~ /e/i) {
+    printf("%d: error %s (%d%%)\n",$s,$type,$score/$args{SAMPLES_PER_SECOND}*100);
+  }
+  $s++;
+  push(@am_types, $type);
+
+  my(@pm) = split(/[lH]/,$f);
+  my($type,$score) = detect_type_pm($am,\@pm);
+}

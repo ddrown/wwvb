@@ -1,0 +1,80 @@
+#!/usr/bin/perl
+
+use strict;
+use Math::Trig qw(pip2 rad2deg);
+use WWVB;
+use vars qw(%args);
+
+$| = 1;
+
+sub print_level {
+  my($cutoff, $mag, $arg, $print_magnitude) = @_;
+
+  my($am_level);
+  if($mag > $cutoff) {
+    $am_level = "H";
+  } else {
+    $am_level = "l";
+  }
+
+  if($print_magnitude) {
+    print "$am_level".$mag."\n";
+  } else {
+    print "$am_level".int(rad2deg($arg))."\n";
+  }
+}
+
+sub pct {
+  my($a, $pct) = @_;
+  my $i = int(scalar(@$a) * ($pct/100));
+  return $a->[$i];
+}
+
+sub find_level {
+  my($cutoff_r, $levels_r, $f, $print_cutoff) = @_;
+
+  push(@$levels_r, $f);
+  if(@$levels_r == $args{SAMPLES_PER_SECOND} * $args{STARTUP_DELAY}) { # wait X seconds
+    my @levels_sorted = sort { abs($a) <=> abs($b) } @$levels_r;
+    $$cutoff_r = abs(pct(\@levels_sorted, 90))/2; # half 90 percentile = cutoff
+    if($print_cutoff) {
+      print STDERR "cutoff = $$cutoff_r\n";
+    }
+    foreach my $level (@$levels_r) {
+      print_level($$cutoff_r, $level);
+    }
+  }
+}
+
+sub arg {
+  my($real,$imag) = @_;
+
+  if($real == 0) {
+    if($imag > 0) {
+      return pip2;
+    } elsif($imag < 0) {
+      return -1 * pip2;
+    } else {
+      return -1000;
+    }
+  } else {
+    return atan2($imag, $real);
+  }
+}
+
+my($print_magnitude,$print_cutoff) = (0,0);
+%args = WWVB::args(\@ARGV, "magnitude" => \$print_magnitude, "cutoff" => \$print_cutoff);
+my(@levels);
+my $cutoff = undef;
+my($real,$imag);
+while(defined($real = <>) and defined($imag = <>)) {
+  chomp($real);
+  chomp($imag);
+  my $mag = sqrt($real*$real + $imag*$imag);
+  my $arg = arg($real,$imag);
+  if(defined($cutoff)) {
+    print_level($cutoff, $mag, $arg, $print_magnitude);
+  } else {
+    find_level(\$cutoff, \@levels, $mag, $print_cutoff);
+  }
+}

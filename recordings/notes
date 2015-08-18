@@ -1,0 +1,23 @@
+ant.wide.5min.15.625.kHz.44.1k.24b.wav
+	- recording starts partially into GMT 0:43 Mar 21, 2012
+	- ~5 minutes long
+	- 60000Hz remapped to 15625Hz (15624.54Hz +/- 0.01Hz? phase drifts)
+	- stored with 44100Hz, 16 bit, mono (only real)
+	- no PM only AM
+	- very low noise
+	- day of year=81, Delta UT=-5, DST in effect, leap year
+	- from: http://www.jks.com/wwvb/wwvb.html
+SDRSharp_20150803_035624Z_59kHz_AF.wav
+	- recording starts partially into GMT 03:56 Aug 3, 2015
+	- 100 seconds long
+	- made in SDRSharp in CW mode, 60000Hz remapped to 600Hz (599.661Hz +/- 0.001Hz)
+	- stored with 62500Hz, 16 bit, mono (only real)
+	- minute of century = 33363981, day of year = 215, Delta UT=+3, DST in effect, normal dst next
+wwvb-complex_500hz.wav
+	- recording starts partially into GMT 6:02 Aug 17, 2015
+	- ~14 minutes long
+	- 60000Hz remapped to DC
+	- stored with 500Hz, 16 bit, stereo (complex)
+	- see screenshot wwvb-complex_500hz.png for GRC settings 
+	- freq adjust of -1.4Hz due to local ADC clock rate error
+	- Delta UT:+3, day of year = 228, DST in effect, normal dst next

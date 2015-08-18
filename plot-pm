@@ -1,0 +1,40 @@
+#!/usr/bin/perl
+
+use strict;
+
+open(DRIFT,"pm-drift.csv");
+my(@points,$i);
+while(<DRIFT>) {
+  if(/,skip/) { # skip
+  } elsif(/^([0-9-]+),skip/) {
+    push(@points,$1);
+  } elsif(/^([0-9-]+)$/) {
+    push(@points,$1);
+  } elsif(/^-1,linefit,([0-9.-]+),([0-9.-]+),([0-9.-]+)/) {
+    my($intercept,$slope) = ($1,$2);
+    $i++;
+    open(POINTS,">.points.$i");
+    foreach my $point (@points) {
+      print POINTS $point,"\n";
+    }
+    close(POINTS);
+    open(GNUPLOT,"| gnuplot-wx");
+    open(POINTSPLOT,">.points.$i.plot");
+    select(GNUPLOT);
+    $| = 1;
+    select(STDOUT);
+    print GNUPLOT "set terminal wx size 900, 600\n";
+    print POINTSPLOT "set terminal wx size 900, 600\n";
+    print GNUPLOT "set yrange [-180:180]\n";
+    print POINTSPLOT "set yrange [-180:180]\n";
+    print GNUPLOT "f(x) = $intercept + $slope * x\n";
+    print POINTSPLOT "f(x) = $intercept + $slope * x\n";
+    print GNUPLOT 'plot f(x), ".points.'.$i.'" using 1 title "phase angle" with lines',"\n";
+    print POINTSPLOT 'plot f(x), ".points.'.$i.'" using 1 title "phase angle" with lines',"\n";
+    print "hit enter - $i\n";
+    my $nothing = <>;
+    close(GNUPLOT);
+    close(POINTSPLOT);
+    @points = ();
+  }
+}
