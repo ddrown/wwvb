@@ -1,0 +1,19 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Long;
+$| = 1;
+
+my $screenwidth = 130;
+Getopt::Long::GetOptions("screenwidth=i" => \$screenwidth) or die("Error in command line arguments\n");
+
+my $i = 0;
+while(<>) {
+  chomp($_);
+  print $_;
+  $i++;
+  if($i == $screenwidth) {
+    $i = 0;
+    print "\n";
+  }
+}
