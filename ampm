@@ -162,13 +162,6 @@ sub decode_am_time {
     }
     $second--;
     if($second < 0) {
-      if($data{sync} eq "11101001000111") { # 180 degrees out of phase
-        foreach my $key (keys %data) {
-          $data{$key} =~ s/0/_/g;
-          $data{$key} =~ s/1/0/g;
-          $data{$key} =~ s/_/1/g;
-        }
-      }
       full_data(\%data);
       %data = ();
       $second = 59;
@@ -249,7 +242,9 @@ sub detect_type_pm {
     my $min = $index[0];
     printf("maxchi phase drift/noise: %0.3f Hz (%0.3f ppm) (chi=%0.3f)\n",$fits[$max]{hz},$fits[$max]{ppm},$fits[$max]{chi});
     printf("minchi phase drift/noise: %0.3f Hz (%0.3f ppm) (chi=%0.3f)\n",$fits[$min]{hz},$fits[$min]{ppm},$fits[$min]{chi});
+    print "data from ".scalar(@fits)."/$count seconds\n";
     @fits = ();
+    $count = 0;
   }
   return($last_value,undef); # TODO: score
 }
@@ -338,6 +333,13 @@ sub decode_pm_time {
     if($second < 0) {
       $second = 59;
     } elsif($second == 12) {
+      if($data{sync} eq "11101001000111") { # 180 degrees out of phase
+        foreach my $key (keys %data) {
+          $data{$key} =~ s/0/_/g;
+          $data{$key} =~ s/1/0/g;
+          $data{$key} =~ s/_/1/g;
+        }
+      }
       full_pm_data(\%data);
       %data = ();
     }
@@ -368,9 +370,6 @@ sub scan_pm {
       for($j = 1; $j < @pm_sync and $j + $i < @differences; $j++) {
         if($differences[$i+$j] != $pm_sync[$j]) {
           last;
-        }
-        if($j > 11) {
-          print join("",@differences),"<$i+$j\n";
         }
       }
       if($j == @pm_sync and $differences[$i+$j-1] == $pm_sync[$j-1]) {
