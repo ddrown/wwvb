@@ -1,0 +1,16 @@
+am-detect:
+	- use a moving average/boxcar average/window for better AM high/low detection
+
+ampm:
+	- use scores to estimate noise and/or framing slips?
+	- compare phase transitions to expected shapes
+	- estimate phase drift over multiple seconds
+	- keep track of the decoded time and use it to drive decoding
+	- handle >0.1Hz offset frequencies (feedback to center frequency filter?)
+	- single bit flip correction in pm code from parity
+	- work on better than 1s accuracy via AM and PM transitions
+
+framer2:
+	- consider % of time silent instead of run of silence
+	- problem: silence or full power spanning multiple local seconds (if the AM levels are wrong)
+	- include phase transitions in frame detection?
