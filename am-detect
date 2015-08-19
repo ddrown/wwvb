@@ -11,7 +11,7 @@ sub print_level {
   my($cutoff, $mag, $arg, $print_magnitude) = @_;
 
   my($am_level);
-  if($mag > $cutoff) {
+  if($mag > $cutoff) { # TODO: use a moving average or window
     $am_level = "H";
   } else {
     $am_level = "l";

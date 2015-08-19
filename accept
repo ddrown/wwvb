@@ -1,25 +1,28 @@
 #!/usr/bin/perl
 
 use strict;
+use FindBin;
+use lib "$FindBin::Bin";
 use IO::Socket::INET;
+use WWVB;
+use vars qw(%args);
 
 $| = 1;
 
 my $bytes = 4;
-if(defined($ARGV[0])) {
-  $bytes = $ARGV[0];
-}
-
 my $format = "f";
-if(defined($ARGV[1])) {
-  $format = $ARGV[1];
-}
+my $exit = 0;
+my $port = 1234;
+%args = WWVB::args(\@ARGV,"bytes=i" => \$bytes, "format=s" => \$format, "exit" => \$exit, "port=i" => \$port);
 
-my $socket = IO::Socket::INET->new(LocalPort => 1234, Proto => "tcp", Listen => 1, ReuseAddr => 1, ReusePort => 1);
+my $socket = IO::Socket::INET->new(LocalPort => $port, Proto => "tcp", Listen => 1, ReuseAddr => 1, ReusePort => 1);
 
 while(my $fd = $socket->accept()) {
   while(sysread($fd, my $buf, $bytes)) {
     my $f = unpack($format,$buf);
     print "$f\n";
+  }
+  if($exit) {
+    exit(0);
   }
 }

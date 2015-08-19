@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+
+use strict;
+
+open(GNUPLOT,"| gnuplot-wx");
+select(GNUPLOT);
+$| = 1;
+select(STDOUT);
+my $step = 10000;
+for(my $i = 0; $i < 440670; $i += $step) {
+  print GNUPLOT "set xrange [$i:",($i+$step),"]\n";
+  print GNUPLOT "plot \"pm.data-3.2.abs\" using 1 with lines\n";
+  print "hit enter $i:",($i+$step),"\n";
+  my $nothing = <>;
+}

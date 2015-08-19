@@ -1,4 +1,7 @@
 #!/usr/bin/perl
+#
+# http://www.nist.gov/pml/div688/grp40/upload/NIST-Enhanced-WWVB-Broadcast-Format-1_01-2013-11-06.pdf
+# https://en.wikipedia.org/wiki/WWVB
 
 use strict;
 use WWVB;
@@ -118,6 +121,8 @@ sub full_data {
   print_data($data);
 }
 
+# meaning of each bit
+# M=marker, m=minute, 0=reserved, h=hour, d=day, u=DUT sign, U=DUT, y=year, L=leap, D=DST
 my(@times) = qw(
  M m m m 0 m m m m M 
  0 0 h h 0 h h h h M 
@@ -127,7 +132,7 @@ my(@times) = qw(
  y y y y 0 L L D D M);
 
 # assumption: @t ends at :59
-sub decode_time {
+sub decode_am_time {
   my(@t) = @_;
   my $second = 59;
   my(%data);
@@ -157,6 +162,13 @@ sub decode_time {
     }
     $second--;
     if($second < 0) {
+      if($data{sync} eq "11101001000111") { # 180 degrees out of phase
+        foreach my $key (keys %data) {
+          $data{$key} =~ s/0/_/g;
+          $data{$key} =~ s/1/0/g;
+          $data{$key} =~ s/_/1/g;
+        }
+      }
       full_data(\%data);
       %data = ();
       $second = 59;
@@ -171,25 +183,29 @@ sub linear_fit {
   my($pm) = @_;
 
   my(@pm_nowrap) = ($pm->[0]);
-  
+ 
+  my($offset,$last_raw) = (0,$pm->[0]);
   for(my $i = 1; $i < @$pm; $i++) {
-    if($pm->[$i-1] > 90 and $pm->[$i] < -90) {
-      push(@pm_nowrap, $pm->[$i]+180);
-    } elsif($pm->[$i-1] < -90 and $pm->[$i] > 90) {
-      push(@pm_nowrap, $pm->[$i]-180);
-    } else {
-      push(@pm_nowrap, $pm->[$i]);
+    if($pm->[$i] < -100 and $last_raw > 100) {
+      $offset += 360;
+    } elsif($pm->[$i] > 100 and $last_raw < -100) {
+      $offset -= 360;
     }
+    $last_raw = $pm->[$i];
+    push(@pm_nowrap, $pm->[$i]+$offset);
   }
 
   my(@counts) = (0..$#pm_nowrap);
   my $linefit = Statistics::LineFit->new();
   $linefit->setData(\@counts, \@pm_nowrap);
   my($intercept, $slope) = $linefit->coefficients();
-  print "y = $intercept + $slope * x (chi=".$linefit->rSquared.")\n";
+  my $degrees_per_second = $slope * $args{SAMPLES_PER_SECOND};
+  my $hz = $degrees_per_second / 360;
+  return({hz => $hz, chi => $linefit->rSquared, ppm => ($hz/60000)*1000000});
 }
 
 my($last_angle,$last_value) = (0,0);
+my(@fits,$count);
 sub detect_type_pm {
   my($am,$pm) = @_;
 
@@ -219,34 +235,169 @@ sub detect_type_pm {
   if(abs($diff) > 90) {
     $last_value = ($last_value == 0) ? 1 : 0;
   }
-  print "pm: $last_value ";
   $last_angle = $avg;
 
-  linear_fit(\@pm);
+  my $fit = linear_fit(\@pm);
+  $count++;
+  if($fit->{chi} != 1.0) { # drop it if it's too good
+    push(@fits,$fit);
+  }
+  if($count == 60) {
+    my(@index) = (0..$#fits);
+    @index = sort { $fits[$a]{chi} <=> $fits[$b]{chi} } @index;
+    my $max = $index[-1];
+    my $min = $index[0];
+    printf("maxchi phase drift/noise: %0.3f Hz (%0.3f ppm) (chi=%0.3f)\n",$fits[$max]{hz},$fits[$max]{ppm},$fits[$max]{chi});
+    printf("minchi phase drift/noise: %0.3f Hz (%0.3f ppm) (chi=%0.3f)\n",$fits[$min]{hz},$fits[$min]{ppm},$fits[$min]{chi});
+    @fits = ();
+  }
+  return($last_value,undef); # TODO: score
+}
+
+sub scan_am {
+  my($s,$score,$am_types) = @_;
+
+  if($am_types->[-1] eq "M") {
+    printf("%d: marker (%d%%)\n",$s,$score/$args{SAMPLES_PER_SECOND}*100);
+    if($am_types->[-2] eq "M") {
+      print "$s: top of minute detected\n";
+      decode_am_time(@$am_types);
+      @$am_types = ();
+    }
+  } elsif($am_types->[-1] =~ /e/i) {
+    printf("%d: error %s (%d%%)\n",$s,$am_types->[-1],$score/$args{SAMPLES_PER_SECOND}*100);
+  }
+}
+
+sub full_pm_data {
+  my($data) = @_;
+
+  print "[pm] full data: ",
+        "s=",$data->{sync},
+        ",p=",$data->{parity},
+        ",t=",$data->{minute_of_century},
+        ",T=",$data->{t0},
+        ",R=",$data->{reserved},
+        ",l=",$data->{dst_ls},
+        ",N=",$data->{notice},
+        ",n=",$data->{dst_next},
+        "\n";
+}
+
+sub partial_pm_data {
+  my($data) = @_;
+
+  print "[pm] partial data: ",
+        "s=",$data->{sync},
+        ",p=",$data->{parity},
+        ",t=",$data->{minute_of_century},
+        ",T=",$data->{t0},
+        ",R=",$data->{reserved},
+        ",l=",$data->{dst_ls},
+        ",N=",$data->{notice},
+        ",n=",$data->{dst_next},
+        "\n";
+}
+
+# p = parity, t = minute of century, T = duplicate t0, R = reserved, l = dst_ls, N = notice, n = dst_next, s = sync
+my(@pm_times) = qw(
+ s s s s s s s s s s 
+ s s s p p p p p t T 
+ t t t t t t t t t R 
+ t t t t t t t t t R
+ t t t t t t t l l N 
+ l l l n n n n n n s
+);
+
+# assumption: @t ends at :12, the end of the sync code
+sub decode_pm_time {
+  my(@t) = @_;
+  my $second = 12;
+  my(%data);
+  for(my $i = $#t; $i >= 0; $i--) {
+    if($pm_times[$second] eq "R") { # reserved, ignore
+      $data{reserved} .= $t[$i];
+    } elsif($pm_times[$second] eq "p") {
+      $data{parity} .= $t[$i];
+    } elsif($pm_times[$second] eq "t") {
+      $data{minute_of_century} .= $t[$i];
+    } elsif($pm_times[$second] eq "T") {
+      $data{t0} .= $t[$i];
+    } elsif($pm_times[$second] eq "l") {
+      $data{dst_ls} .= $t[$i];
+    } elsif($pm_times[$second] eq "N") {
+      $data{notice} .= $t[$i];
+    } elsif($pm_times[$second] eq "n") {
+      $data{dst_next} .= $t[$i];
+    } elsif($pm_times[$second] eq "s") {
+      $data{sync} .= $t[$i];
+    } else {
+      die("unknown state for $second: $pm_times[$second]");
+    }
+    $second--;
+    if($second < 0) {
+      $second = 59;
+    } elsif($second == 12) {
+      full_pm_data(\%data);
+      %data = ();
+    }
+  }
+  if(%data) {
+    partial_pm_data(\%data);
+  }
+}
+
+# differential coding: 0=different, 1=same
+# sync[13..0] = 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0
+my(@pm_sync) = (   1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1);
+sub scan_pm {
+  my($s,$score,$pm_types) = @_;
+
+  my(@differences) = ();
+  for(my $i = 1; $i < @$pm_types; $i++) {
+    if($pm_types->[$i] != $pm_types->[$i-1]) {
+      push(@differences, 0);
+    } else {
+      push(@differences, 1);
+    }
+  }
+
+  for(my $i = 0; $i < @differences; $i++) {
+    if($differences[$i] == $pm_sync[0]) {
+      my $j;
+      for($j = 1; $j < @pm_sync and $j + $i < @differences; $j++) {
+        if($differences[$i+$j] != $pm_sync[$j]) {
+          last;
+        }
+        if($j > 11) {
+          print join("",@differences),"<$i+$j\n";
+        }
+      }
+      if($j == @pm_sync and $differences[$i+$j-1] == $pm_sync[$j-1]) {
+        print "$s: found end of pm sync\n";
+        decode_pm_time(@$pm_types);
+        @$pm_types = ();
+      }
+    }
+  }
 }
 
 my($s) = 0;
-my(@am_types);
+my(@am_types,@pm_types);
 while(my $f = <>) {
   chomp($f);
+  $s++;
+
   my($am) = $f;
   $am =~ s/[-0-9]*//g; # remove phase data
   $am =~ s/l/0/g;
   $am =~ s/H/1/g;
   my($type,$score) = detect_type_am($am);
-  if($type eq "M") {
-    printf("%d: marker (%d%%)\n",$s,$score/$args{SAMPLES_PER_SECOND}*100);
-    if($am_types[-1] eq "M") {
-      print "$s: top of minute detected\n";
-      decode_time(@am_types);
-      @am_types = ();
-    }
-  } elsif($type =~ /e/i) {
-    printf("%d: error %s (%d%%)\n",$s,$type,$score/$args{SAMPLES_PER_SECOND}*100);
-  }
-  $s++;
   push(@am_types, $type);
+  scan_am($s,$score,\@am_types);
 
-  my(@pm) = split(/[lH]/,$f);
+  my(@pm) = split(/[lH]/,$f); # remove am data
   my($type,$score) = detect_type_pm($am,\@pm);
+  push(@pm_types,$type);
+  scan_pm($s,$score,\@pm_types); 
 }

@@ -37,15 +37,15 @@ while(defined(my $real = <>) and defined(my $imaginary = <>)) {
     my $sorted = $real_pdl->abs->qsorti();
     print "\nN=$sample_size L=$len HZbin=".($args{SAMPLES_PER_SECOND}/$len)."\n";
     for(my $i = 0; $i < 10; $i++) {
-      print hz($sps,$len,$sorted->index($i)),"Hz=",$real_pdl->index($sorted->index($i)),"\n";
+      print hz($args{SAMPLES_PER_SECOND},$len,$sorted->index($len-$i-1)),"Hz=",$real_pdl->index($sorted->index($len-$i-1)),"\n";
     }
     $sorted = $imag_pdl->abs->qsorti();
     print "------------------\n";
     for(my $i = 0; $i < 10; $i++) {
-      print hz($sps,$len,$sorted->index($i)),"Hz=",$imag_pdl->index($sorted->index($i)),"\n";
+      print hz($args{SAMPLES_PER_SECOND},$len,$sorted->index($len-$i-1)),"Hz=",$imag_pdl->index($sorted->index($len-$i-1)),"\n";
     }
     if($rolling) {
-      @r = @i = ();
+      @real = @imag = ();
     } else {
       $sample_size *= 2;
     }

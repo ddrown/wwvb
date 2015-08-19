@@ -12,7 +12,7 @@ SDRSharp_20150803_035624Z_59kHz_AF.wav
 	- 100 seconds long
 	- made in SDRSharp in CW mode, 60000Hz remapped to 600Hz (599.661Hz +/- 0.001Hz)
 	- stored with 62500Hz, 16 bit, mono (only real)
-	- minute of century = 33363981, day of year = 215, Delta UT=+3, DST in effect, normal dst next
+	- minute of century = 8198156, day of year = 215, Delta UT=+3, DST in effect, normal dst next
 wwvb-complex_500hz.wav
 	- recording starts partially into GMT 6:02 Aug 17, 2015
 	- ~14 minutes long
