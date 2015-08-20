@@ -1,5 +1,8 @@
 gnuradio setup: straight to tcp sink
 
+decoder setup:
+./accept --exit | ./am-detect --sps=500 | ./framer2 --sps=500 | ./ampm --sps=500
+
 Sun Aug 16 06:02:00 GMT 2015
 unix start of century = 946684800
 expected time = 1439704920
