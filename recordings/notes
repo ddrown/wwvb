@@ -14,10 +14,10 @@ SDRSharp_20150803_035624Z_59kHz_AF.wav
 	- stored with 62500Hz, 16 bit, mono (only real)
 	- minute of century = 8198156, day of year = 215, Delta UT=+3, DST in effect, normal dst next
 wwvb-complex_500hz.wav
-	- recording starts partially into GMT 6:02 Aug 17, 2015
+	- recording starts partially into GMT 6:02 Aug 16, 2015
 	- ~14 minutes long
 	- 60000Hz remapped to DC
 	- stored with 500Hz, 16 bit, stereo (complex)
 	- see screenshot wwvb-complex_500hz.png for GRC settings 
 	- freq adjust of -1.4Hz due to local ADC clock rate error
-	- Delta UT:+3, day of year = 228, DST in effect, normal dst next
+	- minute of century = 8217002, Delta UT:+3, day of year = 228, DST in effect, normal dst next
