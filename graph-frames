@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+
+use strict;
+use PDL;
+
+open(GNUPLOT,"| gnuplot-wx");
+select(GNUPLOT);
+$| = 1;
+select(STDOUT);
+my(@seconds);
+while(<>) {
+  my(@numbers) = split(/[Hl]/,$_);
+  shift(@numbers); # line starts with H/l code
+  push(@seconds,\@numbers);
+  if(@seconds == 10) {
+    print GNUPLOT "plot ";
+    for(my $i = 0; $i < 10; $i++) {
+      my $seconds = pdl($seconds[$i]);
+      $seconds->wcols(".data.$i");
+      print GNUPLOT "'.data.$i' using 1 title '$i' with lines lc $i, ";
+    }
+    print GNUPLOT "0.5 title 'midpoint'\n";
+    @seconds = ();
+  }
+}
+
+print "done, hit enter\n";
+open(TTY,"</dev/tty");
+my $enter = <TTY>;
+close(TTY);

@@ -2,47 +2,48 @@
 
 use strict;
 use Math::Trig qw(pip2 rad2deg);
+use PDL::Lite;
 use WWVB;
 use vars qw(%args);
 
 $| = 1;
 
-sub print_level {
-  my($cutoff, $mag, $arg, $print_magnitude) = @_;
+sub adjust_mag {
+  my($mag,$cutoff) = @_;
 
+  return $mag + 0.5 - $cutoff; # shift the cutoff to 0.5
+}
+
+my(@history);
+sub calculate_cutoff {
+  my($mag) = @_;
+
+  push(@history, $mag);
+  if(@history > $args{SAMPLES_PER_SECOND}) { # use 1 second of data
+    shift(@history);
+  }
+  my $history = pdl(\@history);
+  my $pct90 = $history->pct(0.9);
+  my $pct10 = $history->pct(0.1);
+  return $pct90 - ($pct90-$pct10)/3; # TODO: does this need dapening?
+}
+
+sub print_level {
+  my($mag, $arg, $print_magnitude) = @_;
+
+  my $cutoff = calculate_cutoff($mag);
+  
   my($am_level);
-  if($mag > $cutoff) { # TODO: use a moving average or window
+  if($mag > $cutoff) {
     $am_level = "H";
   } else {
     $am_level = "l";
   }
 
   if($print_magnitude) {
-    print "$am_level".$mag."\n";
+    print "$am_level".adjust_mag($cutoff,$mag)."\n";
   } else {
     print "$am_level".int(rad2deg($arg))."\n";
-  }
-}
-
-sub pct {
-  my($a, $pct) = @_;
-  my $i = int(scalar(@$a) * ($pct/100));
-  return $a->[$i];
-}
-
-sub find_level {
-  my($cutoff_r, $levels_r, $f, $print_cutoff) = @_;
-
-  push(@$levels_r, $f);
-  if(@$levels_r == $args{SAMPLES_PER_SECOND} * $args{STARTUP_DELAY}) { # wait X seconds
-    my @levels_sorted = sort { abs($a) <=> abs($b) } @$levels_r;
-    $$cutoff_r = abs(pct(\@levels_sorted, 90))/2; # half 90 percentile = cutoff
-    if($print_cutoff) {
-      print STDERR "cutoff = $$cutoff_r\n";
-    }
-    foreach my $level (@$levels_r) {
-      print_level($$cutoff_r, $level);
-    }
   }
 }
 
@@ -65,16 +66,11 @@ sub arg {
 my($print_magnitude,$print_cutoff) = (0,0);
 %args = WWVB::args(\@ARGV, "magnitude" => \$print_magnitude, "cutoff" => \$print_cutoff);
 my(@levels);
-my $cutoff = undef;
 my($real,$imag);
 while(defined($real = <>) and defined($imag = <>)) {
   chomp($real);
   chomp($imag);
   my $mag = sqrt($real*$real + $imag*$imag);
   my $arg = arg($real,$imag);
-  if(defined($cutoff)) {
-    print_level($cutoff, $mag, $arg, $print_magnitude);
-  } else {
-    find_level(\$cutoff, \@levels, $mag, $print_cutoff);
-  }
+  print_level($mag, $arg, $print_magnitude);
 }

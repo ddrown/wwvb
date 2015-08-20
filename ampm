@@ -294,6 +294,7 @@ sub partial_pm_data {
         "\n";
 }
 
+# meaning of each bit
 # p = parity, t = minute of century, T = duplicate t0, R = reserved, l = dst_ls, N = notice, n = dst_next, s = sync
 my(@pm_times) = qw(
  s s s s s s s s s s 
@@ -349,7 +350,7 @@ sub decode_pm_time {
   }
 }
 
-# differential coding: 0=different, 1=same
+# because we don't know which phase is which, use differential coding to detect the sync frame: 0=different, 1=same
 # sync[13..0] = 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0
 my(@pm_sync) = (   1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1);
 sub scan_pm {
