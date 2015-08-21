@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+
+use strict;
+use PDL;
+use WWVB;
+use vars qw(%args);
+
+open(GNUPLOT,"| gnuplot-wx");
+select(GNUPLOT);
+$| = 1;
+select(STDOUT);
+my(@samples);
+
+my($framer_log) = "am-framer.log";
+%args = WWVB::args(\@ARGV,"framerlog=s" => \$framer_log);
+
+my(%tops);
+open(FRAMER,$framer_log);
+while(<FRAMER>) {
+  if(/^top of second at (\d+) s .... ([0-9.]+) ms.: (\d+) transition down at (\d+) end_mag: ([0-9.]+)/) {
+    $tops{$1} = {
+      bottom_size => $2,
+      base => $3,
+      down => $4,
+      mag => $5
+    };
+  } else {
+    warn("unknown line");
+  }
+}
+close(FRAMER);
+
+print GNUPLOT "set y2range [-0.5:1.5]\n";
+
+my($s) = 0;
+while(<>) {
+  my($mag,$ang) = split(/ /,$_);
+  push(@samples,$mag);
+  if(@samples == $args{SAMPLES_PER_SECOND}*2) { # every 2 seconds
+    my(@plots);
+
+    my $seconds = pdl(\@samples);
+    $seconds->wcols(".data");
+    push(@plots, "'.data' using 1 title 'magnitude' with lines");
+    my $slope = $seconds->rotate(1);
+    $slope = $seconds - $slope;
+    my $zeros = zeros($slope->nelem());
+    $slope->inplace->le($zeros, 0);
+    $slope->wcols(".data.1");
+    push(@plots, "'.data.1' using 1 title 'negative' axes x1y2 with lines");
+
+    for(my $i = 0; $i < 2; $i++) {
+      if($tops{$i+$s}) {
+        my $base = ($tops{$i+$s}{base}/1000 + $i)*$args{SAMPLES_PER_SECOND};
+        print GNUPLOT "set arrow from $base,graph 0 to $base,graph 0.7\n";
+        push(@plots, $tops{$i+$s}{mag}." title '".($i+$s)." bottom'");
+      }
+    }
+    print GNUPLOT "plot ".join(", ",@plots)."\n";
+
+    @samples = ();
+    $s += 2;
+    sleep(2);
+    print GNUPLOT "unset arrow\n";
+  }
+}
+
+print "done, hit enter\n";
+open(TTY,"</dev/tty");
+my $enter = <TTY>;
+close(TTY);

@@ -1,0 +1,139 @@
+#!/usr/bin/perl
+
+use strict;
+use FindBin;
+use lib "$FindBin::Bin";
+use PDL;
+use Math::Trig qw(pip2 rad2deg);
+use WWVB;
+use vars qw(%args);
+
+$| = 1;
+
+sub print_previous_second {
+  my($second,$records) = @_;
+
+  my $min_mag;
+  for(my $i = 0; $i < @$records; $i++) {
+    if($records->[$i]{second} != $second) {
+      if(not defined($min_mag) or ($records->[$i]{end_mag} < $records->[$min_mag]{end_mag})) {
+        $min_mag = $i;
+      }
+    }
+  }
+
+  if(defined($min_mag)) {
+    my $record = $records->[$min_mag];
+    print "top of second at ".int($record->{top_of_second}/1000)." s (+/- ".$record->{gap}." ms): ".($record->{top_of_second} % 1000).
+      " transition down at ".(($record->{last_start} / $args{SAMPLES_PER_SECOND} * 1000) % 1000).
+      " end_mag: ".$record->{end_mag}."\n";
+  }
+
+  @$records = grep { $_->{second} == $second } @$records;
+}
+
+my($top_of_second) = undef;
+my(@records);
+sub top_of_second {
+  my($top_of_second, $gap, $last_start, $end_mag) = @_;
+
+  $gap = $gap / $args{SAMPLES_PER_SECOND} * 1000 / 2; # convert to ms, half for +/- error estimation
+  $top_of_second = ($top_of_second/$args{SAMPLES_PER_SECOND})*1000-100; # convert to ms, assume lowest point is 100ms into second
+
+  my $second = int($top_of_second/1000);
+
+  push(@records,{
+    second => $second,
+    gap => $gap,
+    top_of_second => $top_of_second,
+    last_start => $last_start,
+    end_mag => $end_mag
+    });
+
+  print_previous_second($second,\@records);
+}
+
+my($last_type,$last_start,$last_end,$last_end_mag);
+sub found_run {
+  my($end,$type,$len,$samples,$end_mag) = @_;
+
+  if($len > $args{SAMPLES_PER_SECOND}*0.1 or # 100ms
+    ($type eq "up" and $len > $args{SAMPLES_PER_SECOND}*0.07)) # 70ms
+  {
+    my $start = $end - $len;
+    if($last_type eq "down" and
+       $type eq "up" and
+       ($start-$last_end) < $args{SAMPLES_PER_SECOND}*0.02)
+    { # we went from down to up within 20ms
+      top_of_second(($start+$last_end)/2, $start-$last_end, $last_start, $last_end_mag);
+    }
+
+    $last_type = $type;
+    $last_end = $end;
+    $last_start = $start;
+    $last_end_mag = $end_mag;
+  }
+}
+
+sub process_samples {
+  my($s,$samples) = @_;
+
+  my($up_run,$down_run) = (0,0);
+  for(my $i = 0; $i < @$samples; $i++) {
+    if($samples->[$i][2] > 0) { # going up
+      $up_run++;
+      if($down_run) {
+        found_run($i+$s,"down",$down_run,$samples,$samples->[$i-1][0]);
+        $down_run = 0;
+      }
+    } else { # going down/staying the same
+      $down_run++;
+      if($up_run) {
+        found_run($i+$s,"up",$up_run,$samples,$samples->[$i-1][0]);
+        $up_run = 0;
+      }
+    }
+  }
+  if($up_run) {
+    found_run($s+scalar(@$samples),"up",$up_run,$samples,$samples->[-1][0]);
+  } elsif($down_run) {
+    found_run($s+scalar(@$samples),"down",$down_run,$samples,$samples->[-1][0]);
+  }
+
+  @$samples = (); # TODO
+}
+
+sub arg {
+  my($real,$imag) = @_;
+
+  if($real == 0) {
+    if($imag > 0) {
+      return pip2;
+    } elsif($imag < 0) {
+      return -1 * pip2;
+    } else {
+      return -1000;
+    }
+  } else {
+    return atan2($imag, $real);
+  }
+}
+
+%args = WWVB::args(\@ARGV);
+my($real,$imag,$last_mag);
+my(@samples);
+my($s) = 0;
+while(defined($real = <>) and defined($imag = <>)) {
+  chomp($real);
+  chomp($imag);
+  my $mag = sqrt($real*$real + $imag*$imag);
+  my $arg = arg($real,$imag);
+  push(@samples, [$mag,$arg,$mag-$last_mag]);
+  $last_mag = $mag;
+  $s++;
+
+  my($down_run,$up_run) = (0,0);
+  if(@samples == 2*$args{SAMPLES_PER_SECOND}) {
+    process_samples($s-2*$args{SAMPLES_PER_SECOND},\@samples);
+  }
+}
